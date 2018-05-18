@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Coves and Conservation Areas of Martha's Vineyard</title>
+    <meta name="viewport" content="initial-scale=1.0">
+    <meta charset="utf-8">
+    <!-- Include Leaflet -->
+    <script src="https://unpkg.com/leaflet@1.2.0/dist/leaflet.js"></script>
+    <link href="https://unpkg.com/leaflet@1.2.0/dist/leaflet.css" rel="stylesheet">
+    <!-- Include CARTO.js -->
+    <script src="https://cartodb-libs.global.ssl.fastly.net/carto.js/v4.0.2/carto.min.js"></script>
+    <!-- Fonts -->
+    <link href='https://fonts.googleapis.com/css?family=Open+Sans:300,400,600,700' rel='stylesheet' type='text/css'>
+    <link href="https://fonts.googleapis.com/css?family=Source+Sans+Pro" rel="stylesheet">
+    <style>
+      * { margin:0; padding:10; }
+      html { box-sizing:border-box; height:100%; width:95%; }
+      body { background:#f2f6f9; height:100%; font-family:"Source Sans Pro", sans-serif; }
+      #container { display:flex; width:100%; height:100%; }
+      #map { flex:1; margin:0px; }
+      #toolbox { width:200px; text-align: center; }
+      #box { text-align: left; padding: 20px; }
+      .footer { position: fixed; right: 0; bottom: 0; width: 200px; text-align: right; padding: 10px; }
+      a { text-decoration: none; font-weight: bold; color: #243C98; }
+      a:hover { color: #000000; }
+      p { padding-bottom: 5px; }
+      h3 {padding-bottom: 5px; }
+
+    </style>
+  </head>
+  <body>
+    <div id="container">
+      <div id="map"></div>
+
+    <div id="toolbox">
+      <div id="box">
+        <header>
+          <h1>Coves and<br> Conservation</h1>
+        </header>
+        <section>
+          <p>This map shows coves and conservation areas on top of satellite imagery of Martha's Vineyard.</p>
+          <p>Letting the cursor hover over map features shows the feature's name.</p>
+          <p>Below, users can choose the colors feature types to improve visibility</p>
+          <div class="separator"></div>
+          <br><br>
+          <h3>Coves</h3>
+          <div id="controlscove">
+            <ul>
+              <li onclick="setRed()">
+                <input type="radio" name="style" id="red">
+                <label for="red">Red</label>
+              </li>
+              <li onclick="setGreen()">
+                <input type="radio" name="style" id="green">
+                <label for="green">Green</label>
+              </li>
+              <li onclick="setBlue()">
+                <input type="radio" name="style" id="blue">
+                <label for="blue">Blue</label>
+              </li>
+            </ul>
+          </div>
+          <br>
+          <h3>Conservation Areas</h3>
+          <div id="controlsconservation">
+            <ul>
+              <li onclick="setConservationRed()">
+                <input type="radio" name="style" id="red">
+                <label for="red">Red</label>
+              </li>
+              <li onclick="setConservationGreen()">
+                <input type="radio" name="style" id="green">
+                <label for="green">Green</label>
+              </li>
+              <li onclick="setConservationBlue()">
+                <input type="radio" name="style" id="blue">
+                <label for="blue">Blue</label>
+              </li>
+            </ul>
+          </div>
+        </section>
+        <div class="footer"><p><br>Data from <a href="https://www.openstreetmap.org/">OpenStreetMap</a></p></div>
+      </div>
+    </div>
+
+
+    <script>
+
+
+        const map = L.map('map').setView([41.411959, -70.643678], 11);
+
+        // Adding Voyager Basemap
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+          maxZoom: 18
+        }).addTo(map);
+
+        // Adding Voyager Labels
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}.png', {
+          maxZoom: 18,
+          zIndex: 10
+        }).addTo(map);
+
+        // add account / API
+        var client = new carto.Client({
+          apiKey: 'b07b9e75b4f3d066ceb07dba68f581bf1b40e12f',
+          username: 'jknight'
+        });
+
+        // define layers
+        // conservation area layer
+        const conservationDataset = new carto.source.Dataset(`
+          mvineyard_conservation
+        `);
+        const conservationStyle = new carto.style.CartoCSS(`
+          #layer {
+          polygon-fill: #4DB6AC;
+            polygon-opacity: 0.3;
+            ::outline {
+              line-width: 1;
+              line-color: #FFFFFF;
+              line-opacity: 0.5;
+            }
+          }
+        `);
+        const conservationAreas = new carto.layer.Layer(conservationDataset, conservationStyle, {
+          featureOverColumns: ['name']
+        });
+
+        // describe how layers will be rendered
+        const coveSource = new carto.source.SQL(`
+          SELECT *
+            FROM coves_of_marthas_vineyard
+        `);
+        const coveStyle = new carto.style.CartoCSS(`
+          #layer {
+            marker-width: 15;
+            marker-fill: #243C98;
+            marker-fill-opacity: 0.5;
+            marker-line-width: 0.3;
+            marker-line-color: #FFFFFF;
+            marker-line-opacity: 0;
+            marker-type: ellipse;
+            marker-allow-overlap: false;
+          }
+        `);
+        const covePlaces = new carto.layer.Layer(coveSource, coveStyle, {
+          featureOverColumns: ['name']
+        });
+
+        // add layers to Client
+        client.addLayers([conservationAreas, covePlaces]);
+
+        // add layers to marker-type
+        client.getLeafletLayer().addTo(map);
+
+        // add tooltip
+        const popup = L.popup({ closeButton: false });
+        conservationAreas.on(carto.layer.events.FEATURE_OVER, featureEvent => {
+          popup.setLatLng(featureEvent.latLng);
+          if (!popup.isOpen()) {
+            popup.setContent(featureEvent.data.name);
+            popup.openOn(map);
+          }
+        });
+        covePlaces.on(carto.layer.events.FEATURE_OVER, featureEvent => {
+          popup.setLatLng(featureEvent.latLng);
+          if (!popup.isOpen()) {
+            popup.setContent(featureEvent.data.name);
+            popup.openOn(map);
+          }
+        });
+
+        // hide tooltip on mouseout
+        conservationAreas.on(carto.layer.events.FEATURE_OUT, featureEvent => {
+          popup.removeFrom(map);
+        });
+
+        // turn on error handling
+        client.on('error', function (clientError) {
+            console.error(clientError.message);
+        });
+
+        //set styles for coves
+        function setRed() {
+          coveStyle.setContent(`
+            #layer {
+              marker-width: 15;
+              marker-fill: #EE4D5A;
+              marker-line-color: #FFFFFF;
+            }
+          `);
+        }
+        function setGreen() {
+          coveStyle.setContent(`
+            #layer {
+              marker-width: 15;
+              marker-fill: #9BC63B;
+              marker-line-color: #FFFFFF;
+            }
+          `);
+        }
+        function setBlue() {
+          coveStyle.setContent(`
+            #layer {
+              marker-width: 15;
+              marker-fill: #1785FB;
+              marker-line-color: #FFFFFF;
+            }
+          `);
+        }
+
+        //set style for Conservation areas
+        function setConservationRed() {
+          conservationStyle.setContent(`
+            #layer {
+            polygon-fill: #EE4D5A;
+              polygon-opacity: 0.5;
+              ::outline {
+                line-width: 1;
+                line-color: #FFFFFF;
+                line-opacity: 0.5;
+              }
+            }
+          `);
+        }
+        function setConservationGreen() {
+          conservationStyle.setContent(`
+            #layer {
+            polygon-fill: #9BC63B;
+              polygon-opacity: 0.5;
+              ::outline {
+                line-width: 1;
+                line-color: #FFFFFF;
+                line-opacity: 0.5;
+              }
+            }
+          `);
+        }
+        function setConservationBlue() {
+          conservationStyle.setContent(`
+            #layer {
+            polygon-fill: #1785FB;
+              polygon-opacity: 0.5;
+              ::outline {
+                line-width: 1;
+                line-color: #FFFFFF;
+                line-opacity: 0.5;
+              }
+            }
+          `);
+        }
+
+
+    </script>
+  </body>
+</html>
